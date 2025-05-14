@@ -9,6 +9,10 @@
 #include "common_tools/common_tool_func.h"
 #include "logger/logger.h"
 #include "config_recorder/uiconfigrecorder.h"
+#include "sysconfigs/sysconfigs.h"
+
+const char* g_str_row_int = "行发送间隔时间";
+const char* g_str_unit_ms = "ms";
 
 #define RECV_DATA_NOTE_E(e) e
 
@@ -37,13 +41,14 @@ static const char gs_start_ack_cmd[] = {'\x00', '\x00', '\x00', '\x02'};
 static const char gs_stop_req_cmd[] = {'\x00', '\x00', '\x00', '\x03'};
 static const char gs_stop_ack_cmd[] = {'\x00', '\x00', '\x00', '\x03'};
 
-static const quint16 gs_def_local_port = 8020;
-
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
       ui(new Ui::MainWindow), m_cfg_recorder(this),
-      m_localport(gs_def_local_port), counter(0), collectingState(ST_IDLE)
+      collectingState(ST_IDLE)
 {
+    QString ret_str;
+    bool ret;
+
     ui->setupUi(this);
 
     m_start_req = QByteArray::fromRawData(gs_start_req_cmd, sizeof(gs_start_req_cmd));
@@ -53,6 +58,19 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_cfg_filter_in.clear();
     m_cfg_filter_out << ui->rmtIPLEdit << ui->rmtPortLEdit << ui->fileDescLEdit << ui->infoDispEdit;
+
+    ret = fill_sys_configs(&ret_str);
+    if(!ret)
+    {
+        QMessageBox::critical(this, "", ret_str);
+        return;
+    }
+
+    /**/
+    counter = g_sys_configs_block.start_row_idx;
+    ui->ptPerRowSpinBox->setRange(1, g_sys_configs_block.max_pt_number);
+    ui->rowIntSpinBox->setRange(g_sys_configs_block.min_row_interval_ms,
+                                g_sys_configs_block.max_row_interval_ms);
     /*set ui default cfg-----------------------------------------------------------*/
     QButtonGroup *d_src_rbtn_grp = new QButtonGroup(this);
     d_src_rbtn_grp->addButton(ui->randDataRBtn);
@@ -66,7 +84,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_cfg_recorder.load_configs_to_ui(this, m_cfg_filter_in, m_cfg_filter_out);
 
     /*-----------------------------------------------------------*/
-    if (!udpSocket.bind(QHostAddress::AnyIPv4, m_localport))
+    if (!udpSocket.bind(QHostAddress::AnyIPv4, g_sys_configs_block.local_udp_port))
     {
         QMessageBox::critical(this, "", QString("bind error"));
         return;
@@ -88,8 +106,7 @@ MainWindow::~MainWindow()
 
 void MainWindow::send_one_row()
 {
-    static const int ls_byte_per_point = 3;
-    int byteCount = ls_byte_per_point * ui->ptPerRowSpinBox->value();
+    int byteCount = g_sys_configs_block.all_bytes_per_pt * ui->ptPerRowSpinBox->value();
 
     switch(m_data_source_type)
     {
@@ -141,7 +158,8 @@ void MainWindow::send_int_timer_hdlr()
 {
     send_one_row();
 
-    if(counter >= ui->rowsToSendSpinBox->value())
+    if((RAND_DATA_BYTES == m_data_source_type)
+        && !ui->infinDataCheckBox->isChecked() && counter >= ui->rowsToSendSpinBox->value())
     {
         m_send_timer.stop();
     }
@@ -271,5 +289,14 @@ void MainWindow::on_fileDataRBtn_toggled(bool checked)
 void MainWindow::on_infinDataCheckBox_clicked(bool checked)
 {
     ui->rowsToSendSpinBox->setEnabled(!checked);
+}
+
+
+void MainWindow::on_resetBtn_clicked()
+{
+    m_send_timer.stop();
+
+    counter = g_sys_configs_block.start_row_idx;
+    collectingState = ST_IDLE;
 }
 

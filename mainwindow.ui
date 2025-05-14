@@ -64,7 +64,14 @@
                 </widget>
                </item>
                <item>
-                <widget class="QSpinBox" name="ptPerRowSpinBox"/>
+                <widget class="QSpinBox" name="ptPerRowSpinBox">
+                 <property name="minimum">
+                  <number>1</number>
+                 </property>
+                 <property name="maximum">
+                  <number>200</number>
+                 </property>
+                </widget>
                </item>
               </layout>
              </item>
@@ -78,7 +85,14 @@
                 </widget>
                </item>
                <item>
-                <widget class="QSpinBox" name="rowsToSendSpinBox"/>
+                <widget class="QSpinBox" name="rowsToSendSpinBox">
+                 <property name="minimum">
+                  <number>1</number>
+                 </property>
+                 <property name="maximum">
+                  <number>2147483647</number>
+                 </property>
+                </widget>
                </item>
                <item>
                 <widget class="QCheckBox" name="infinDataCheckBox">

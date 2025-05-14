@@ -39,10 +39,9 @@ private:
 
     // UDP socket
     QUdpSocket udpSocket;
-    quint16 m_localport;
 
     // Counter for appending to data
-    quint16 counter;
+    qint64 counter;
 
     CollectState collectingState = ST_IDLE;
 
@@ -74,5 +73,6 @@ private slots:
     void on_fileDataRBtn_toggled(bool checked);
     void on_infinDataCheckBox_clicked(bool checked);
     void send_int_timer_hdlr();
+    void on_resetBtn_clicked();
 };
 #endif // MAINWINDOW_H
