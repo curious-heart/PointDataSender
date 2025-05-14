@@ -41,7 +41,7 @@ private:
     QUdpSocket udpSocket;
 
     // Counter for appending to data
-    qint64 counter;
+    qint64 m_counter, m_row_idx;
 
     CollectState collectingState = ST_IDLE;
 

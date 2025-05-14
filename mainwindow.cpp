@@ -67,7 +67,9 @@ MainWindow::MainWindow(QWidget *parent)
     }
 
     /**/
-    counter = g_sys_configs_block.start_row_idx;
+    m_row_idx = g_sys_configs_block.start_row_idx;
+    m_counter = 0;
+
     ui->ptPerRowSpinBox->setRange(1, g_sys_configs_block.max_pt_number);
     ui->rowIntSpinBox->setRange(g_sys_configs_block.min_row_interval_ms,
                                 g_sys_configs_block.max_row_interval_ms);
@@ -115,11 +117,11 @@ void MainWindow::send_one_row()
         QByteArray data = generateRandomData(byteCount);
 
         // Append 2-byte counter (little-endian)
-        data.append(static_cast<char>(counter & 0xFF));
-        data.append(static_cast<char>((counter >> 8) & 0xFF));
+        data.append(static_cast<char>(m_row_idx & 0xFF));
+        data.append(static_cast<char>((m_row_idx >> 8) & 0xFF));
 
-        // Increment counter for next send
-        counter++;
+        m_row_idx++;
+        m_counter++;
 
         // Send data via UDP
         qint64 bytesSent = udpSocket.writeDatagram(data, m_rmt_addr, m_rmt_port);
@@ -148,7 +150,7 @@ void MainWindow::on_sendBtn_clicked()
     m_data_source_type = RAND_DATA_BYTES;
     send_one_row();
 
-    if(counter < ui->rowsToSendSpinBox->value())
+    if(m_counter < ui->rowsToSendSpinBox->value())
     {
         m_send_timer.start(ui->rowIntSpinBox->value());
     }
@@ -159,9 +161,10 @@ void MainWindow::send_int_timer_hdlr()
     send_one_row();
 
     if((RAND_DATA_BYTES == m_data_source_type)
-        && !ui->infinDataCheckBox->isChecked() && counter >= ui->rowsToSendSpinBox->value())
+        && !ui->infinDataCheckBox->isChecked() && m_counter >= ui->rowsToSendSpinBox->value())
     {
         m_send_timer.stop();
+        m_counter = 0;
     }
 }
 
@@ -296,7 +299,8 @@ void MainWindow::on_resetBtn_clicked()
 {
     m_send_timer.stop();
 
-    counter = g_sys_configs_block.start_row_idx;
+    m_row_idx = g_sys_configs_block.start_row_idx;
+    m_counter = 0;
     collectingState = ST_IDLE;
 }
 
