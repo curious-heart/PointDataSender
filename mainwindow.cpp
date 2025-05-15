@@ -125,7 +125,7 @@ void MainWindow::send_one_row()
 
         // Send data via UDP
         qint64 bytesSent = udpSocket.writeDatagram(data, m_rmt_addr, m_rmt_port);
-        QString info_str = byteArrayToHexString(data);
+        QString info_str = data.toHex(' ').toUpper();
         ui->infoDispEdit->append(log_disp_prepender_str() + "sent:" + info_str);
         if (bytesSent == -1)
         {
@@ -243,7 +243,7 @@ void MainWindow::data_ready_hdlr()
             else
             {
                 log_str = "receive unkonwn data in ST_IDLE\n";
-                log_str += data.toHex() + "\n";
+                log_str += data.toHex(' ').toUpper() + "\n";
             }
             break;
 
@@ -254,14 +254,13 @@ void MainWindow::data_ready_hdlr()
                 udpSocket.writeDatagram(m_stop_ack, m_rmt_addr, m_rmt_port);
                 collectingState = ST_IDLE;
 
-                log_str = "receive stop cmd. acked. enter ST_IDLE";
+                log_str = "receive stop cmd. acked. enter ST_IDLE\n";
             }
             else
             {
                 log_str = "receive unexpected data in ST_COLLECTIN\n";
-                log_str += data.toHex() + "\n";
+                log_str += data.toHex(' ').toUpper() + "\n";
             }
-            log_str += data.toHex() + "\n";
             break;
         }
         ui->infoDispEdit->append(log_disp_prepender_str() + log_str);
@@ -302,5 +301,11 @@ void MainWindow::on_resetBtn_clicked()
     m_row_idx = g_sys_configs_block.start_row_idx;
     m_counter = 0;
     collectingState = ST_IDLE;
+}
+
+
+void MainWindow::on_clearDispBtn_clicked()
+{
+    ui->infoDispEdit->clear();
 }
 

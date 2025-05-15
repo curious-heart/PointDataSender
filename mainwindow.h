@@ -74,5 +74,6 @@ private slots:
     void on_infinDataCheckBox_clicked(bool checked);
     void send_int_timer_hdlr();
     void on_resetBtn_clicked();
+    void on_clearDispBtn_clicked();
 };
 #endif // MAINWINDOW_H
