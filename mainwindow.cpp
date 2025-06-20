@@ -2,6 +2,7 @@
 #include <QRandomGenerator>
 #include <QNetworkDatagram>
 #include <QButtonGroup>
+#include <QFileDialog>
 
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
@@ -13,6 +14,16 @@
 
 const char* g_str_row_int = "行发送间隔时间";
 const char* g_str_unit_ms = "ms";
+const char* g_str_select_file = "选择文件";
+const char* g_str_unsupported_file_type = "不支持此类文件";
+const char* g_str_invalid_data_src = "无效的数据源";
+const char* g_str_img_file_number_should_be = "图像文件数量必须为";
+
+const QStringList g_slist_img_file_ext = {"png", "bmp", "jpg"};
+const QStringList g_slist_txt_file_ext = {"txt"};
+
+const char* g_str_fpn_sep = ";";
+static int g_data_channel_number = 2;
 
 #define RECV_DATA_NOTE_E(e) e
 
@@ -57,7 +68,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_stop_ack = QByteArray::fromRawData(gs_stop_ack_cmd, sizeof(gs_stop_ack_cmd));
 
     m_cfg_filter_in.clear();
-    m_cfg_filter_out << ui->rmtIPLEdit << ui->rmtPortLEdit << ui->fileDescLEdit << ui->infoDispEdit;
+    m_cfg_filter_out << ui->rmtIPLEdit << ui->rmtPortLEdit << ui->infoDispEdit;
 
     ret = fill_sys_configs(&ret_str);
     if(!ret)
@@ -80,6 +91,11 @@ MainWindow::MainWindow(QWidget *parent)
     ui->fileDataRBtn->setChecked(true);
     ui->randDataRBtn->setChecked(true);
 
+    QButtonGroup *d_file_type_rbtn_grp = new QButtonGroup(this);
+    d_file_type_rbtn_grp->addButton(ui->txtFileTypeRBtn);
+    d_file_type_rbtn_grp->addButton(ui->imgFileTypeRBtn);
+    ui->txtFileTypeRBtn->setChecked(true);
+
     ui->infinDataCheckBox->setChecked(false);
 
     /*load saved ui cfg-----------------------------------------------------------*/
@@ -93,6 +109,17 @@ MainWindow::MainWindow(QWidget *parent)
     }
     connect(&udpSocket, &QUdpSocket::readyRead, this, &MainWindow::data_ready_hdlr);
     connect(&m_send_timer, &QTimer::timeout, this, &MainWindow::send_int_timer_hdlr);
+
+    if(ui->randDataRBtn->isChecked())
+    {
+        m_data_source_type = RAND_DATA_BYTES;
+    }
+    else
+    {
+        m_data_source_type = ui->txtFileTypeRBtn->isChecked() ?
+                             DATA_FROM_TXT_FILE : DATA_FROM_IMG_FILE;
+    }
+    m_data_fpn_list = ui->fileDescLEdit->text().split(g_str_fpn_sep);
 }
 
 MainWindow::~MainWindow()
@@ -106,34 +133,53 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
-void MainWindow::send_one_row()
+bool MainWindow::send_finished()
 {
-    int byteCount = g_sys_configs_block.all_bytes_per_pt * ui->ptPerRowSpinBox->value();
+    bool finished = false;
 
     switch(m_data_source_type)
     {
-    case RAND_DATA_BYTES:
-    default:
-        QByteArray data = generateRandomData(byteCount);
-
-        // Append 2-byte counter (little-endian)
-        data.append(static_cast<char>(m_row_idx & 0xFF));
-        data.append(static_cast<char>((m_row_idx >> 8) & 0xFF));
-
-        m_row_idx++;
-        m_counter++;
-
-        // Send data via UDP
-        qint64 bytesSent = udpSocket.writeDatagram(data, m_rmt_addr, m_rmt_port);
-        QString info_str = data.toHex(' ').toUpper();
-        ui->infoDispEdit->append(log_disp_prepender_str() + "sent:" + info_str);
-        if (bytesSent == -1)
-        {
-            info_str = QString("ERROR!!! Failed to send data: ") + udpSocket.errorString();
-            ui->infoDispEdit->append(info_str);
-        }
-
+    case DATA_FROM_TXT_FILE:
+    case DATA_FROM_IMG_FILE:
+        finished = (m_counter >= m_data_rows_from_file.count());
         break;
+
+    default: //RAND_DATA_BYTES
+        finished = (!ui->infinDataCheckBox->isChecked()
+                        && m_counter >= ui->rowsToSendSpinBox->value());
+        break;
+    }
+    return finished;
+}
+
+void MainWindow::send_one_row()
+{
+    QByteArray a_row;
+
+    if(RAND_DATA_BYTES == m_data_source_type)
+    {
+        int byteCount = g_sys_configs_block.all_bytes_per_pt * ui->ptPerRowSpinBox->value();
+        a_row = generateRandomData(byteCount);
+    }
+
+    QByteArray &data = (DATA_FROM_TXT_FILE == m_data_source_type || DATA_FROM_TXT_FILE == m_data_source_type) ?
+                m_data_rows_from_file[m_counter] : a_row;
+
+    // Append 2-byte counter (little-endian)
+    data.append(static_cast<char>(m_row_idx & 0xFF));
+    data.append(static_cast<char>((m_row_idx >> 8) & 0xFF));
+
+    m_row_idx++;
+    m_counter++;
+
+    // Send data via UDP
+    qint64 bytesSent = udpSocket.writeDatagram(data, m_rmt_addr, m_rmt_port);
+    QString info_str = data.toHex(' ').toUpper();
+    ui->infoDispEdit->append(log_disp_prepender_str() + "sent:" + info_str);
+    if (bytesSent == -1)
+    {
+        info_str = QString("ERROR!!! Failed to send data: ") + udpSocket.errorString();
+        ui->infoDispEdit->append(info_str);
     }
 }
 
@@ -147,10 +193,27 @@ void MainWindow::on_sendBtn_clicked()
     m_rmt_addr = QHostAddress((ui->rmtIPLEdit->text()));
     m_rmt_port = ui->rmtPortLEdit->text().toInt();
 
-    m_data_source_type = RAND_DATA_BYTES;
+    if(DATA_SRC_INVALID == m_data_source_type)
+    {
+        QMessageBox::critical(this, "Error", g_str_invalid_data_src);
+        return;
+    }
+
+    switch(m_data_source_type)
+    {
+    case DATA_FROM_TXT_FILE:
+        break;
+
+    case DATA_FROM_IMG_FILE:
+        break;
+
+    default: //RAND_DATA_BYTES
+        break;
+    }
+
     send_one_row();
 
-    if(m_counter < ui->rowsToSendSpinBox->value())
+    if(!send_finished())
     {
         m_send_timer.start(ui->rowIntSpinBox->value());
     }
@@ -160,12 +223,19 @@ void MainWindow::send_int_timer_hdlr()
 {
     send_one_row();
 
-    if((RAND_DATA_BYTES == m_data_source_type)
-        && !ui->infinDataCheckBox->isChecked() && m_counter >= ui->rowsToSendSpinBox->value())
+    if(send_finished())
     {
-        m_send_timer.stop();
-        m_counter = 0;
+        stop_data_send();
     }
+}
+
+void MainWindow::stop_data_send()
+{
+    m_send_timer.stop();
+    m_counter = 0;
+    m_row_idx = g_sys_configs_block.start_row_idx;
+
+    collectingState = ST_IDLE;
 }
 
 bool MainWindow::validateInputs()
@@ -275,16 +345,28 @@ QString MainWindow::log_disp_prepender_str()
 void MainWindow::on_randDataRBtn_toggled(bool checked)
 {
     ui->ptPerRowSpinBox->setEnabled(checked);
+    ui->rowsToSendSpinBox->setEnabled(checked);
     ui->infinDataCheckBox->setEnabled(checked);
 
-    if(checked) ui->rowsToSendSpinBox->setEnabled(!(ui->infinDataCheckBox->isChecked()));
+    if(checked)
+    {
+        ui->rowsToSendSpinBox->setEnabled(!(ui->infinDataCheckBox->isChecked()));
+        m_data_source_type = RAND_DATA_BYTES;
+    }
 }
 
 void MainWindow::on_fileDataRBtn_toggled(bool checked)
 {
-    ui->fileFpnLEdit->setEnabled(checked);
     ui->selFileBtn->setEnabled(checked);
     ui->fileDescLEdit->setEnabled(checked);
+    ui->txtFileTypeRBtn->setEnabled(checked);
+    ui->imgFileTypeRBtn->setEnabled(checked);
+
+    if(checked)
+    {
+        m_data_source_type = ui->txtFileTypeRBtn->isChecked() ?
+                             DATA_FROM_TXT_FILE : DATA_FROM_IMG_FILE;
+    }
 }
 
 
@@ -296,16 +378,66 @@ void MainWindow::on_infinDataCheckBox_clicked(bool checked)
 
 void MainWindow::on_resetBtn_clicked()
 {
-    m_send_timer.stop();
-
-    m_row_idx = g_sys_configs_block.start_row_idx;
-    m_counter = 0;
-    collectingState = ST_IDLE;
+    stop_data_send();
 }
 
 
 void MainWindow::on_clearDispBtn_clicked()
 {
     ui->infoDispEdit->clear();
+}
+
+void MainWindow::on_selFileBtn_clicked()
+{
+    static QString ls_txt_f_filter_str = QString("Text files (*.") + g_slist_txt_file_ext.join(" *.") + ")";
+    static QString ls_img_f_filter_str = QString("Images (*.") + g_slist_img_file_ext.join(" *.") + ")";
+
+    QString ls_f_filter_str = (DATA_FROM_TXT_FILE == m_data_source_type) ?
+                                ls_txt_f_filter_str : ls_img_f_filter_str;
+    QString def_dir_s = ui->fileDescLEdit->text();
+    QStringList dirList = def_dir_s.split(g_str_fpn_sep, Qt::SkipEmptyParts);
+    def_dir_s = dirList.isEmpty() ? "" : dirList[0];
+    def_dir_s = QFileInfo(def_dir_s).absolutePath();
+    if(def_dir_s.isEmpty()) def_dir_s = ".";
+
+    if(DATA_FROM_TXT_FILE == m_data_source_type)
+    {
+        QString file_fpn_str = QFileDialog::getOpenFileName(this, g_str_select_file, def_dir_s, ls_f_filter_str);
+        if(file_fpn_str.isEmpty()) return;
+
+        m_data_fpn_list.clear();
+        m_data_fpn_list.append(file_fpn_str);
+    }
+    else
+    {
+        QStringList file_fpn_strs;
+        do
+        {
+            file_fpn_strs = QFileDialog::getOpenFileNames(this, g_str_select_file, def_dir_s, ls_f_filter_str);
+            if(file_fpn_strs.isEmpty()) return;
+            if(file_fpn_strs.count() == g_data_channel_number) break;
+
+            QMessageBox::critical(this, "Error",
+                                  QString("%1 %2").arg(g_str_img_file_number_should_be).arg(g_data_channel_number));
+        }while(true);
+        m_data_fpn_list.clear();
+        m_data_fpn_list = file_fpn_strs;
+    }
+
+    if(!m_data_fpn_list.isEmpty())
+    {
+        ui->fileDescLEdit->setText(m_data_fpn_list.join(g_str_fpn_sep));
+        m_cfg_recorder.record_ui_configs(this, m_cfg_filter_in, m_cfg_filter_out);
+    }
+}
+
+void MainWindow::on_txtFileTypeRBtn_toggled(bool checked)
+{
+    if(checked) m_data_source_type = DATA_FROM_TXT_FILE;
+}
+
+void MainWindow::on_imgFileTypeRBtn_toggled(bool checked)
+{
+    if(checked) m_data_source_type = DATA_FROM_IMG_FILE;
 }
 

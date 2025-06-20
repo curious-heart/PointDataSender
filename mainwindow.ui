@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>622</width>
+    <width>670</width>
     <height>324</height>
    </rect>
   </property>
@@ -126,16 +126,26 @@
               </widget>
              </item>
              <item>
-              <widget class="QLineEdit" name="fileFpnLEdit">
-               <property name="readOnly">
+              <widget class="QPushButton" name="selFileBtn">
+               <property name="text">
+                <string>选择文件</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QRadioButton" name="txtFileTypeRBtn">
+               <property name="text">
+                <string>文本</string>
+               </property>
+               <property name="checked">
                 <bool>true</bool>
                </property>
               </widget>
              </item>
              <item>
-              <widget class="QPushButton" name="selFileBtn">
+              <widget class="QRadioButton" name="imgFileTypeRBtn">
                <property name="text">
-                <string>选择文件</string>
+                <string>图像</string>
                </property>
               </widget>
              </item>
@@ -354,7 +364,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>622</width>
+     <width>670</width>
      <height>21</height>
     </rect>
    </property>

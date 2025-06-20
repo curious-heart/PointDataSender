@@ -19,9 +19,10 @@ enum CollectState
 
 typedef enum
 {
+    DATA_SRC_INVALID,
     RAND_DATA_BYTES,
+    DATA_FROM_IMG_FILE,
     DATA_FROM_TXT_FILE,
-    DATA_FROM_BIN_FILE,
 }data_source_type_e_t;
 
 class MainWindow : public QMainWindow
@@ -54,7 +55,10 @@ private:
     int m_send_int_ms;
     QTimer m_send_timer;
 
-    data_source_type_e_t m_data_source_type;
+    data_source_type_e_t m_data_source_type = DATA_SRC_INVALID;
+
+    QVector<QByteArray> m_data_rows_from_file;
+    QStringList m_data_fpn_list;
 
     // Helper methods
     bool validateInputs();
@@ -65,6 +69,8 @@ private:
     QString log_disp_prepender_str();
 
     void send_one_row();
+    bool send_finished();
+    void stop_data_send();
 
 private slots:
     void data_ready_hdlr();
@@ -75,5 +81,8 @@ private slots:
     void send_int_timer_hdlr();
     void on_resetBtn_clicked();
     void on_clearDispBtn_clicked();
+    void on_selFileBtn_clicked();
+    void on_txtFileTypeRBtn_toggled(bool checked);
+    void on_imgFileTypeRBtn_toggled(bool checked);
 };
 #endif // MAINWINDOW_H
