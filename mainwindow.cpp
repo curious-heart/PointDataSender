@@ -3,6 +3,7 @@
 #include <QNetworkDatagram>
 #include <QButtonGroup>
 #include <QFileDialog>
+#include <QTextStream>
 
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
@@ -18,9 +19,24 @@ const char* g_str_select_file = "选择文件";
 const char* g_str_unsupported_file_type = "不支持此类文件";
 const char* g_str_invalid_data_src = "无效的数据源";
 const char* g_str_img_file_number_should_be = "图像文件数量必须为";
+const char* g_str_plz_select_txt_file = "请选择文本格式的数据文件";
+const char* g_str_plz_select_img_file = "请选择图像格式的数据文件";
+const char* g_str_unit_ge = "个";
+const char* g_str_open_file_failes = "打开文件失败";
+const char* g_str_the_order = "第";
+const char* g_str_row = "行";
+const char* g_str_contains_invalid_char = "包含非法字符";
+const char* g_str_byte_cnts_of_rows_should_be_iden = "每行数据字节数应该相等";
+const char* g_str_hex_digit_num_is_odd = "HEX字符数为奇数";
+const char* g_str_auto_append = "自动补充";
+const char* g_str_byte_per_row = "byte每行";
+const char* g_str_imgs_should_be_of_same_size = "图像的宽高应该相等";
 
 const QStringList g_slist_img_file_ext = {"png", "bmp", "jpg"};
 const QStringList g_slist_txt_file_ext = {"txt"};
+const QRegExp g_row_seperator("\\s"), g_non_hex_char("[^0-9a-fA-F]");
+
+const QString g_append_data_digit = "F";
 
 const char* g_str_fpn_sep = ";";
 static int g_data_channel_number = 2;
@@ -120,6 +136,18 @@ MainWindow::MainWindow(QWidget *parent)
                              DATA_FROM_TXT_FILE : DATA_FROM_IMG_FILE;
     }
     m_data_fpn_list = ui->fileDescLEdit->text().split(g_str_fpn_sep);
+
+    int row_cnt = 0, byte_per_row = 0;
+    if(DATA_FROM_TXT_FILE == m_data_source_type)
+    {
+        gen_data_from_txt_file(&row_cnt, &byte_per_row, true);
+    }
+    else
+    {
+        gen_data_from_img_file(&row_cnt, &byte_per_row, true);
+    }
+    ui->byteAndRowNumLbl->setText(QString("%1%2;%3 %4").arg(row_cnt).arg(g_str_row)
+                                  .arg(byte_per_row).arg(g_str_byte_per_row));
 }
 
 MainWindow::~MainWindow()
@@ -133,7 +161,7 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
-bool MainWindow::send_finished()
+bool MainWindow::is_send_finished()
 {
     bool finished = false;
 
@@ -162,7 +190,7 @@ void MainWindow::send_one_row()
         a_row = generateRandomData(byteCount);
     }
 
-    QByteArray &data = (DATA_FROM_TXT_FILE == m_data_source_type || DATA_FROM_TXT_FILE == m_data_source_type) ?
+    QByteArray &data = (DATA_FROM_TXT_FILE == m_data_source_type || DATA_FROM_IMG_FILE == m_data_source_type) ?
                 m_data_rows_from_file[m_counter] : a_row;
 
     // Append 2-byte counter (little-endian)
@@ -199,23 +227,28 @@ void MainWindow::on_sendBtn_clicked()
         return;
     }
 
+    bool data_gened = true;
     switch(m_data_source_type)
     {
     case DATA_FROM_TXT_FILE:
+        data_gened = gen_data_from_txt_file();
         break;
 
     case DATA_FROM_IMG_FILE:
+        data_gened = gen_data_from_img_file();
         break;
 
     default: //RAND_DATA_BYTES
         break;
     }
 
-    send_one_row();
-
-    if(!send_finished())
+    if(data_gened)
     {
-        m_send_timer.start(ui->rowIntSpinBox->value());
+        send_one_row();
+        if(!is_send_finished())
+        {
+            m_send_timer.start(ui->rowIntSpinBox->value());
+        }
     }
 }
 
@@ -223,7 +256,7 @@ void MainWindow::send_int_timer_hdlr()
 {
     send_one_row();
 
-    if(send_finished())
+    if(is_send_finished())
     {
         stop_data_send();
     }
@@ -269,6 +302,122 @@ QByteArray MainWindow::generateRandomData(int byteCount)
     }
 
     return data;
+}
+
+bool MainWindow::gen_data_from_txt_file(int *row_num, int *byte_per_row, bool only_get_row_and_byte_per_row)
+{
+    if(m_data_fpn_list.count() <= 0)
+    {
+        QMessageBox::critical(this, "", g_str_plz_select_txt_file);
+        return false;
+    }
+    QString fpn = m_data_fpn_list[0];
+    QFile txt_file(fpn);
+    if (!txt_file.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        QMessageBox::critical(this, "", QString(g_str_open_file_failes) + ":"
+                              + qPrintable(txt_file.errorString()));
+        return false;
+    }
+    m_data_rows_from_file.clear();
+    QTextStream txt_stream(&txt_file);
+    QString line;
+    int row_cnt = 0, hf_byte_per_row;
+    bool ret = true;
+    bool the_1st_row = true;;
+    while (txt_stream.readLineInto(&line))
+    {
+        line.remove(g_row_seperator);
+        if(line.contains(g_non_hex_char))
+        {
+            QMessageBox::critical(this, "", QString("%1:%2%3%4%5").arg(fpn, g_str_the_order).
+                                  arg(row_cnt).arg(g_str_row, g_str_contains_invalid_char));
+            ret = false; break;
+        }
+        if(line.isEmpty()) continue;
+
+        if(line.length() % 2 != 0)
+        {
+            DIY_LOG(LOG_WARN, QString("%1, %2, %3").arg(g_str_hex_digit_num_is_odd,
+                                                        g_str_auto_append, g_append_data_digit));
+            line.append(g_append_data_digit);
+        }
+
+        if(the_1st_row)
+        {
+            hf_byte_per_row = line.length();
+            the_1st_row = false;
+            if(byte_per_row) *byte_per_row = hf_byte_per_row / 2;
+        }
+
+        if(line.length() != hf_byte_per_row)
+        {
+            QMessageBox::critical(this, "", g_str_byte_cnts_of_rows_should_be_iden);
+            ret = false; break;
+        }
+
+        if(!only_get_row_and_byte_per_row)
+        {
+            m_data_rows_from_file.append(QByteArray::fromHex(line.toUtf8()));
+        }
+        ++row_cnt;
+    }
+
+    txt_file.close();
+    if(row_num) *row_num = row_cnt;
+
+    return ret;
+}
+
+bool MainWindow::gen_data_from_img_file(int *row_num, int *byte_per_row, bool only_get_row_and_byte_per_row)
+{
+    if(m_data_fpn_list.count() < g_data_channel_number)
+    {
+        QMessageBox::critical(this, "", QString("%1(%2%3)").arg(g_str_plz_select_img_file)
+                              .arg(g_data_channel_number).arg(g_str_unit_ge));
+        return false;
+    }
+    QImage img1(m_data_fpn_list[0]), img2(m_data_fpn_list[1]);
+    if((img1.width() != img2.width()) || (img1.height() != img2.height()))
+    {
+        QMessageBox::critical(this, "", g_str_imgs_should_be_of_same_size);
+        return false;
+    }
+    m_data_rows_from_file.clear();
+
+    if(only_get_row_and_byte_per_row)
+    {
+        if(row_num) *row_num = img1.height();
+        if(byte_per_row) *byte_per_row = img1.width() * 3;
+        return true;
+    }
+
+    img1 = img1.convertToFormat(QImage::Format_Grayscale16, Qt::MonoOnly);
+    img2 = img2.convertToFormat(QImage::Format_Grayscale16, Qt::MonoOnly);
+    for(int y = 0; y < img1.height(); ++y)
+    {
+        QByteArray data_row;
+        const quint16* img1_row = reinterpret_cast<const quint16*>(img1.constScanLine(y));
+        const quint16* img2_row = reinterpret_cast<const quint16*>(img2.constScanLine(y));
+        data_row.clear();
+        for(int x = 0; x < img1.width(); ++x)
+        {
+            quint16 pt1, pt2;
+            quint8 byte;
+            pt1 = img1_row[x]; pt2 = img2_row[x];
+            byte = (pt1 & 0x0FF0) >> 4;
+            data_row.append(byte);
+
+            byte = ((pt1 & 0x000F) << 4) | ((pt2 & 0x00F0) >> 4);
+            data_row.append(byte);
+
+            byte = (pt2 & 0x00FF);
+            data_row.append(byte);
+        }
+        m_data_rows_from_file.append(data_row);
+    }
+
+    return true;
 }
 
 QString MainWindow::byteArrayToHexString(const QByteArray &data)
@@ -428,6 +577,19 @@ void MainWindow::on_selFileBtn_clicked()
     {
         ui->fileDescLEdit->setText(m_data_fpn_list.join(g_str_fpn_sep));
         m_cfg_recorder.record_ui_configs(this, m_cfg_filter_in, m_cfg_filter_out);
+
+        int row_cnt = 0, byte_per_row = 0;
+        if(DATA_FROM_TXT_FILE == m_data_source_type)
+        {
+            gen_data_from_txt_file(&row_cnt, &byte_per_row, true);
+        }
+        else
+        {
+            gen_data_from_img_file(&row_cnt, &byte_per_row, true);
+        }
+
+        ui->byteAndRowNumLbl->setText(QString("%1%2;%3 %4").arg(row_cnt).arg(g_str_row)
+                                      .arg(byte_per_row).arg(g_str_byte_per_row));
     }
 }
 

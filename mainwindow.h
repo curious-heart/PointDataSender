@@ -69,8 +69,11 @@ private:
     QString log_disp_prepender_str();
 
     void send_one_row();
-    bool send_finished();
+    bool is_send_finished();
     void stop_data_send();
+
+    bool gen_data_from_txt_file(int *row_num = nullptr, int * byte_per_row = nullptr, bool only_get_row_and_byte_per_row = false);
+    bool gen_data_from_img_file(int *row_num = nullptr, int * byte_per_row = nullptr, bool only_get_row_and_byte_per_row = false);
 
 private slots:
     void data_ready_hdlr();
