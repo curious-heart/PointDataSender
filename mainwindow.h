@@ -70,10 +70,12 @@ private:
 
     void send_one_row();
     bool is_send_finished();
-    void stop_data_send();
+    void stop_data_send(bool reset_st = true);
 
-    bool gen_data_from_txt_file(int *row_num = nullptr, int * byte_per_row = nullptr, bool only_get_row_and_byte_per_row = false);
-    bool gen_data_from_img_file(int *row_num = nullptr, int * byte_per_row = nullptr, bool only_get_row_and_byte_per_row = false);
+    bool gen_data_from_txt_file(int *row_num = nullptr, int * pt_per_row = nullptr, bool only_get_row_and_byte_per_row = false);
+    bool gen_data_from_img_file(int *row_num = nullptr, int * pt_per_row = nullptr, bool only_get_row_and_byte_per_row = false);
+
+    void display_data_size();
 
 private slots:
     void data_ready_hdlr();

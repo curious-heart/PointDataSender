@@ -25,11 +25,12 @@ const char* g_str_unit_ge = "个";
 const char* g_str_open_file_failes = "打开文件失败";
 const char* g_str_the_order = "第";
 const char* g_str_row = "行";
+const char* g_str_point = "点";
 const char* g_str_contains_invalid_char = "包含非法字符";
 const char* g_str_byte_cnts_of_rows_should_be_iden = "每行数据字节数应该相等";
 const char* g_str_hex_digit_num_is_odd = "HEX字符数为奇数";
 const char* g_str_auto_append = "自动补充";
-const char* g_str_byte_per_row = "byte每行";
+const char* g_str_every_mei = "每";
 const char* g_str_imgs_should_be_of_same_size = "图像的宽高应该相等";
 
 const QStringList g_slist_img_file_ext = {"png", "bmp", "jpg"};
@@ -40,6 +41,7 @@ const QString g_append_data_digit = "F";
 
 const char* g_str_fpn_sep = ";";
 static int g_data_channel_number = 2;
+static int g_byte_per_point = 3;
 
 #define RECV_DATA_NOTE_E(e) e
 
@@ -137,17 +139,10 @@ MainWindow::MainWindow(QWidget *parent)
     }
     m_data_fpn_list = ui->fileDescLEdit->text().split(g_str_fpn_sep);
 
-    int row_cnt = 0, byte_per_row = 0;
-    if(DATA_FROM_TXT_FILE == m_data_source_type)
+    if(DATA_FROM_TXT_FILE == m_data_source_type || DATA_FROM_IMG_FILE == m_data_source_type)
     {
-        gen_data_from_txt_file(&row_cnt, &byte_per_row, true);
+        display_data_size();
     }
-    else
-    {
-        gen_data_from_img_file(&row_cnt, &byte_per_row, true);
-    }
-    ui->byteAndRowNumLbl->setText(QString("%1%2;%3 %4").arg(row_cnt).arg(g_str_row)
-                                  .arg(byte_per_row).arg(g_str_byte_per_row));
 }
 
 MainWindow::~MainWindow()
@@ -159,6 +154,22 @@ MainWindow::~MainWindow()
     m_send_timer.stop();
 
     delete ui;
+}
+
+void MainWindow::display_data_size()
+{
+    int row_cnt = 0, pt_per_row = 0;
+    if(DATA_FROM_TXT_FILE == m_data_source_type)
+    {
+        gen_data_from_txt_file(&row_cnt, &pt_per_row, true);
+    }
+    else
+    {
+        gen_data_from_img_file(&row_cnt, &pt_per_row, true);
+    }
+    ui->byteAndRowNumLbl->setText(QString("%1%2 %3 %4; %5 %6").arg(g_str_every_mei, g_str_row)
+                                  .arg(pt_per_row).arg(g_str_point)
+                                  .arg(row_cnt).arg(g_str_row));
 }
 
 bool MainWindow::is_send_finished()
@@ -213,6 +224,8 @@ void MainWindow::send_one_row()
 
 void MainWindow::on_sendBtn_clicked()
 {
+    stop_data_send(false);
+
     if (!validateInputs())
     {
         return;
@@ -258,17 +271,17 @@ void MainWindow::send_int_timer_hdlr()
 
     if(is_send_finished())
     {
-        stop_data_send();
+        m_send_timer.stop();
     }
 }
 
-void MainWindow::stop_data_send()
+void MainWindow::stop_data_send(bool reset_st)
 {
     m_send_timer.stop();
     m_counter = 0;
     m_row_idx = g_sys_configs_block.start_row_idx;
 
-    collectingState = ST_IDLE;
+    if(reset_st) collectingState = ST_IDLE;
 }
 
 bool MainWindow::validateInputs()
@@ -304,7 +317,7 @@ QByteArray MainWindow::generateRandomData(int byteCount)
     return data;
 }
 
-bool MainWindow::gen_data_from_txt_file(int *row_num, int *byte_per_row, bool only_get_row_and_byte_per_row)
+bool MainWindow::gen_data_from_txt_file(int *row_num, int *pt_per_row, bool only_get_row_and_byte_per_row)
 {
     if(m_data_fpn_list.count() <= 0)
     {
@@ -315,8 +328,8 @@ bool MainWindow::gen_data_from_txt_file(int *row_num, int *byte_per_row, bool on
     QFile txt_file(fpn);
     if (!txt_file.open(QIODevice::ReadOnly | QIODevice::Text))
     {
-        QMessageBox::critical(this, "", QString(g_str_open_file_failes) + ":"
-                              + qPrintable(txt_file.errorString()));
+        QMessageBox::critical(this, "", fpn + "\n" + QString(g_str_open_file_failes) + ":"
+                              + txt_file.errorString());
         return false;
     }
     m_data_rows_from_file.clear();
@@ -347,7 +360,7 @@ bool MainWindow::gen_data_from_txt_file(int *row_num, int *byte_per_row, bool on
         {
             hf_byte_per_row = line.length();
             the_1st_row = false;
-            if(byte_per_row) *byte_per_row = hf_byte_per_row / 2;
+            if(pt_per_row) *pt_per_row = ((hf_byte_per_row / 2) + (g_byte_per_point - 1)) / g_byte_per_point ;
         }
 
         if(line.length() != hf_byte_per_row)
@@ -369,15 +382,27 @@ bool MainWindow::gen_data_from_txt_file(int *row_num, int *byte_per_row, bool on
     return ret;
 }
 
-bool MainWindow::gen_data_from_img_file(int *row_num, int *byte_per_row, bool only_get_row_and_byte_per_row)
+bool MainWindow::gen_data_from_img_file(int *row_num, int *pt_per_row, bool only_get_row_and_byte_per_row)
 {
+    QString file_sel_hint_str = QString("%1(%2%3)").arg(g_str_plz_select_img_file)
+                              .arg(g_data_channel_number).arg(g_str_unit_ge);
     if(m_data_fpn_list.count() < g_data_channel_number)
     {
-        QMessageBox::critical(this, "", QString("%1(%2%3)").arg(g_str_plz_select_img_file)
-                              .arg(g_data_channel_number).arg(g_str_unit_ge));
+        QMessageBox::critical(this, "", file_sel_hint_str);
         return false;
     }
     QImage img1(m_data_fpn_list[0]), img2(m_data_fpn_list[1]);
+    if(img1.isNull() || img2.isNull())
+    {
+        QString err_str;
+        if(img1.isNull()) err_str += m_data_fpn_list[0] + "\n";
+        if(img2.isNull()) err_str += m_data_fpn_list[1] + "\n";
+        err_str += g_str_open_file_failes;
+        QMessageBox::critical(this, "", err_str);
+
+        return false;
+    }
+
     if((img1.width() != img2.width()) || (img1.height() != img2.height()))
     {
         QMessageBox::critical(this, "", g_str_imgs_should_be_of_same_size);
@@ -388,27 +413,30 @@ bool MainWindow::gen_data_from_img_file(int *row_num, int *byte_per_row, bool on
     if(only_get_row_and_byte_per_row)
     {
         if(row_num) *row_num = img1.height();
-        if(byte_per_row) *byte_per_row = img1.width() * 3;
+        if(pt_per_row) *pt_per_row = img1.width();
         return true;
     }
 
-    img1 = img1.convertToFormat(QImage::Format_Grayscale16, Qt::MonoOnly);
-    img2 = img2.convertToFormat(QImage::Format_Grayscale16, Qt::MonoOnly);
+    img1 = img1.convertToFormat(QImage::Format_Grayscale8, Qt::MonoOnly);
+    img2 = img2.convertToFormat(QImage::Format_Grayscale8, Qt::MonoOnly);
+
     for(int y = 0; y < img1.height(); ++y)
     {
         QByteArray data_row;
-        const quint16* img1_row = reinterpret_cast<const quint16*>(img1.constScanLine(y));
-        const quint16* img2_row = reinterpret_cast<const quint16*>(img2.constScanLine(y));
+        const quint8* img1_row = img1.constScanLine(y);
+        const quint8* img2_row = img2.constScanLine(y);
         data_row.clear();
         for(int x = 0; x < img1.width(); ++x)
         {
             quint16 pt1, pt2;
             quint8 byte;
-            pt1 = img1_row[x]; pt2 = img2_row[x];
+            pt1 = (img1_row[x] << 4) | (img1_row[x] >> 4); //8bit -> 12 bit;
+            pt2 = (img2_row[x] << 4) | (img2_row[x] >> 4); //8bit -> 12 bit;
+
             byte = (pt1 & 0x0FF0) >> 4;
             data_row.append(byte);
 
-            byte = ((pt1 & 0x000F) << 4) | ((pt2 & 0x00F0) >> 4);
+            byte = ((pt1 & 0x000F) << 4) | ((pt2 & 0x0F00) >> 8);
             data_row.append(byte);
 
             byte = (pt2 & 0x00FF);
@@ -470,8 +498,11 @@ void MainWindow::data_ready_hdlr()
         default:
             if (data == m_stop_req)
             {
+
                 udpSocket.writeDatagram(m_stop_ack, m_rmt_addr, m_rmt_port);
                 collectingState = ST_IDLE;
+
+                stop_data_send();
 
                 log_str = "receive stop cmd. acked. enter ST_IDLE\n";
             }
@@ -578,18 +609,7 @@ void MainWindow::on_selFileBtn_clicked()
         ui->fileDescLEdit->setText(m_data_fpn_list.join(g_str_fpn_sep));
         m_cfg_recorder.record_ui_configs(this, m_cfg_filter_in, m_cfg_filter_out);
 
-        int row_cnt = 0, byte_per_row = 0;
-        if(DATA_FROM_TXT_FILE == m_data_source_type)
-        {
-            gen_data_from_txt_file(&row_cnt, &byte_per_row, true);
-        }
-        else
-        {
-            gen_data_from_img_file(&row_cnt, &byte_per_row, true);
-        }
-
-        ui->byteAndRowNumLbl->setText(QString("%1%2;%3 %4").arg(row_cnt).arg(g_str_row)
-                                      .arg(byte_per_row).arg(g_str_byte_per_row));
+        display_data_size();
     }
 }
 
