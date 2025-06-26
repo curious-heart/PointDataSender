@@ -28,7 +28,7 @@ const char* g_str_row = "行";
 const char* g_str_point = "点";
 const char* g_str_contains_invalid_char = "包含非法字符";
 const char* g_str_byte_cnts_of_rows_should_be_iden = "每行数据字节数应该相等";
-const char* g_str_hex_digit_num_is_odd = "HEX字符数为奇数";
+const char* g_str_hex_digit_num_not_fill_pts = "HEX字符数为不满足整数点数需求";
 const char* g_str_auto_append = "自动补充";
 const char* g_str_every_mei = "每";
 const char* g_str_imgs_should_be_of_same_size = "图像的宽高应该相等";
@@ -37,7 +37,7 @@ const QStringList g_slist_img_file_ext = {"png", "bmp", "jpg"};
 const QStringList g_slist_txt_file_ext = {"txt"};
 const QRegExp g_row_seperator("\\s"), g_non_hex_char("[^0-9a-fA-F]");
 
-const QString g_append_data_digit = "F";
+const char g_append_data_digit = 'F';
 
 const char* g_str_fpn_sep = ";";
 static int g_data_channel_number = 2;
@@ -86,7 +86,8 @@ MainWindow::MainWindow(QWidget *parent)
     m_stop_ack = QByteArray::fromRawData(gs_stop_ack_cmd, sizeof(gs_stop_ack_cmd));
 
     m_cfg_filter_in.clear();
-    m_cfg_filter_out << ui->rmtIPLEdit << ui->rmtPortLEdit << ui->infoDispEdit;
+    m_cfg_filter_out << ui->rmtIPLEdit << ui->rmtPortLEdit << ui->rmtPortLEdit
+                     << ui->infoDispEdit;
 
     ret = fill_sys_configs(&ret_str);
     if(!ret)
@@ -115,6 +116,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->txtFileTypeRBtn->setChecked(true);
 
     ui->infinDataCheckBox->setChecked(false);
+    ui->stopSendBtn->setVisible(false);
 
     /*load saved ui cfg-----------------------------------------------------------*/
     m_cfg_recorder.load_configs_to_ui(this, m_cfg_filter_in, m_cfg_filter_out);
@@ -143,6 +145,11 @@ MainWindow::MainWindow(QWidget *parent)
     {
         display_data_size();
     }
+
+    ui->stopSendBtn->setVisible(ui->randDataRBtn->isChecked()
+                                && ui->infinDataCheckBox->isChecked());
+
+    m_init_ok = true;
 }
 
 MainWindow::~MainWindow()
@@ -204,9 +211,17 @@ void MainWindow::send_one_row()
     QByteArray &data = (DATA_FROM_TXT_FILE == m_data_source_type || DATA_FROM_IMG_FILE == m_data_source_type) ?
                 m_data_rows_from_file[m_counter] : a_row;
 
-    // Append 2-byte counter (little-endian)
-    data.append(static_cast<char>(m_row_idx & 0xFF));
-    data.append(static_cast<char>((m_row_idx >> 8) & 0xFF));
+    // Append 2-byte counter
+    if(LOW_BYTE_FIRST == g_sys_configs_block.row_idx_byte_order)
+    {
+        data.append(static_cast<char>(m_row_idx & 0xFF));
+        data.append(static_cast<char>((m_row_idx >> 8) & 0xFF));
+    }
+    else
+    {
+        data.append(static_cast<char>((m_row_idx >> 8) & 0xFF));
+        data.append(static_cast<char>(m_row_idx & 0xFF));
+    }
 
     m_row_idx++;
     m_counter++;
@@ -335,7 +350,8 @@ bool MainWindow::gen_data_from_txt_file(int *row_num, int *pt_per_row, bool only
     m_data_rows_from_file.clear();
     QTextStream txt_stream(&txt_file);
     QString line;
-    int row_cnt = 0, hf_byte_per_row;
+    int row_cnt = 0, hf_byte_per_row, padded_hex_digit_cnt;
+    static int ls_lcm_of_2_and_byte_per_pt = lcm(2, g_byte_per_point);
     bool ret = true;
     bool the_1st_row = true;;
     while (txt_stream.readLineInto(&line))
@@ -349,24 +365,32 @@ bool MainWindow::gen_data_from_txt_file(int *row_num, int *pt_per_row, bool only
         }
         if(line.isEmpty()) continue;
 
-        if(line.length() % 2 != 0)
-        {
-            DIY_LOG(LOG_WARN, QString("%1, %2, %3").arg(g_str_hex_digit_num_is_odd,
-                                                        g_str_auto_append, g_append_data_digit));
-            line.append(g_append_data_digit);
-        }
-
         if(the_1st_row)
         {
             hf_byte_per_row = line.length();
-            the_1st_row = false;
-            if(pt_per_row) *pt_per_row = ((hf_byte_per_row / 2) + (g_byte_per_point - 1)) / g_byte_per_point ;
         }
 
         if(line.length() != hf_byte_per_row)
         {
             QMessageBox::critical(this, "", g_str_byte_cnts_of_rows_should_be_iden);
             ret = false; break;
+        }
+
+        padded_hex_digit_cnt = hf_byte_per_row %
+                               (ls_lcm_of_2_and_byte_per_pt ? ls_lcm_of_2_and_byte_per_pt : 2);
+        if(padded_hex_digit_cnt != 0)
+        {
+            padded_hex_digit_cnt = ls_lcm_of_2_and_byte_per_pt - padded_hex_digit_cnt;
+            line += QString(padded_hex_digit_cnt, g_append_data_digit);
+            DIY_LOG(LOG_WARN, QString("%1, %2 %3 %4 %5").arg(g_str_hex_digit_num_not_fill_pts, g_str_auto_append)
+                                                        .arg(padded_hex_digit_cnt).arg(g_str_unit_ge)
+                                                        .arg(g_append_data_digit));
+        }
+
+        if(the_1st_row)
+        {
+            if(pt_per_row) *pt_per_row =  line.length() / g_byte_per_point;
+            the_1st_row = false;
         }
 
         if(!only_get_row_and_byte_per_row)
@@ -481,6 +505,7 @@ void MainWindow::data_ready_hdlr()
 
                 ui->rmtIPLEdit->setText(m_rmt_addr.toString());
                 ui->rmtPortLEdit->setText(QString::number(m_rmt_port));
+                ui->localPortLEdit->setText(QString::number(udpSocket.localPort()));
 
                 udpSocket.writeDatagram(m_start_ack, m_rmt_addr, m_rmt_port);
                 collectingState = ST_COLLECTING;
@@ -532,6 +557,8 @@ void MainWindow::on_randDataRBtn_toggled(bool checked)
     {
         ui->rowsToSendSpinBox->setEnabled(!(ui->infinDataCheckBox->isChecked()));
         m_data_source_type = RAND_DATA_BYTES;
+
+        ui->stopSendBtn->setVisible(ui->infinDataCheckBox->isChecked());
     }
 }
 
@@ -546,6 +573,8 @@ void MainWindow::on_fileDataRBtn_toggled(bool checked)
     {
         m_data_source_type = ui->txtFileTypeRBtn->isChecked() ?
                              DATA_FROM_TXT_FILE : DATA_FROM_IMG_FILE;
+
+        ui->stopSendBtn->setVisible(false);
     }
 }
 
@@ -621,5 +650,17 @@ void MainWindow::on_txtFileTypeRBtn_toggled(bool checked)
 void MainWindow::on_imgFileTypeRBtn_toggled(bool checked)
 {
     if(checked) m_data_source_type = DATA_FROM_IMG_FILE;
+}
+
+
+void MainWindow::on_infinDataCheckBox_toggled(bool checked)
+{
+    ui->stopSendBtn->setVisible(checked);
+}
+
+
+void MainWindow::on_stopSendBtn_clicked()
+{
+     stop_data_send();
 }
 

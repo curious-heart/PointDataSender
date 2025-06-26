@@ -8,6 +8,8 @@
 #include <QSet>
 #include <QKeyEvent>
 
+#include <type_traits>  // std::make_unsigned
+
 typedef enum
 {
     IP_SET_TYPE_IPV4_DYNAMIC = 0,
@@ -124,4 +126,34 @@ public:
     void add_keys_to_filter(const QSet<Qt::Key> & keys);
 };
 
+
+// 求最大公约数
+template <typename T>
+T gcd(T a, T b)
+{
+    // 保证 a 和 b 为非负数（支持负数输入）
+    a = qAbs(a);
+    b = qAbs(b);
+    while (b != 0) {
+        T t = b;
+        b = a % b;
+        a = t;
+    }
+    return a;
+}
+
+// 求最小公倍数
+template <typename T>
+T lcm(T a, T b)
+{
+    if (a == 0 || b == 0)
+        return 0;
+
+    // 为防止乘法溢出，用无符号类型存储中间结果
+    using U = typename std::make_unsigned<T>::type;
+    U ua = qAbs(a);
+    U ub = qAbs(b);
+
+    return static_cast<T>((ua / gcd(ua, ub)) * ub);
+}
 #endif // COMMON_TOOL_FUNC_H

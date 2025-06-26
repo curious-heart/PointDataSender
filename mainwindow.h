@@ -32,9 +32,12 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+    inline bool init_ok() {return m_init_ok;}
 
 private:
     Ui::MainWindow *ui;
+    bool m_init_ok = false;
+
     UiConfigRecorder m_cfg_recorder;
     qobj_ptr_set_t m_cfg_filter_in, m_cfg_filter_out;
 
@@ -89,5 +92,7 @@ private slots:
     void on_selFileBtn_clicked();
     void on_txtFileTypeRBtn_toggled(bool checked);
     void on_imgFileTypeRBtn_toggled(bool checked);
+    void on_infinDataCheckBox_toggled(bool checked);
+    void on_stopSendBtn_clicked();
 };
 #endif // MAINWINDOW_H
