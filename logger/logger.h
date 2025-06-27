@@ -30,9 +30,6 @@ public:
 public slots:
     //void receive_log(LOG_LEVEL level, QString loc_str, QString log_str);
     void receive_log(int level, QString loc_str, QString log_str);
-
-private:
-    void writeLog(QString level_str, QString loc_str, QString msg);
 };
 
 class LogSigEmitter: public QObject
@@ -68,10 +65,15 @@ void __emit_log_signal__(int level, QString loc_str, QString log);
  * program.
  *
 */
-bool start_log_thread(QThread &th, LOG_LEVEL display_lvl = LOG_ERROR);
+bool start_log_thread(QThread &th, LOG_LEVEL display_lvl = LOG_INFO);
 void end_log_thread(QThread &th);
+void update_log_level(LOG_LEVEL display_lvl);
 
 extern const char* g_log_level_strs[];
+
+/*DO NOT call this function, just use DIY_LOG macro.*/
+void writeLog(int level, QString loc_str, QString msg);
+
 /*
  * Use example:
  *     DIY_LOG(LOG_LEVEL::LOG_INFO, "info str.");
@@ -84,6 +86,10 @@ extern const char* g_log_level_strs[];
         if(g_LogSigEmitter)\
         {\
             __emit_log_signal__((int)level, loc_str, (log));\
+        }\
+        else\
+        {\
+            writeLog((level), loc_str, (log));\
         }\
     }
 

@@ -75,9 +75,6 @@ MainWindow::MainWindow(QWidget *parent)
       ui(new Ui::MainWindow), m_cfg_recorder(this),
       collectingState(ST_IDLE)
 {
-    QString ret_str;
-    bool ret;
-
     ui->setupUi(this);
 
     m_start_req = QByteArray::fromRawData(gs_start_req_cmd, sizeof(gs_start_req_cmd));
@@ -88,13 +85,6 @@ MainWindow::MainWindow(QWidget *parent)
     m_cfg_filter_in.clear();
     m_cfg_filter_out << ui->rmtIPLEdit << ui->rmtPortLEdit << ui->rmtPortLEdit
                      << ui->infoDispEdit;
-
-    ret = fill_sys_configs(&ret_str);
-    if(!ret)
-    {
-        QMessageBox::critical(this, "", ret_str);
-        return;
-    }
 
     /**/
     m_row_idx = g_sys_configs_block.start_row_idx;
@@ -372,7 +362,7 @@ bool MainWindow::gen_data_from_txt_file(int *row_num, int *pt_per_row, bool only
 
         if(line.length() != hf_byte_per_row)
         {
-            QMessageBox::critical(this, "", g_str_byte_cnts_of_rows_should_be_iden);
+            QMessageBox::critical(this, "", fpn + "\n" + g_str_byte_cnts_of_rows_should_be_iden);
             ret = false; break;
         }
 
