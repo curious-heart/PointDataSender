@@ -88,7 +88,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     /**/
     m_row_idx = g_sys_configs_block.start_row_idx;
-    m_counter = 0;
+    m_counter = 0; m_sent_succ_counter = 0;
 
     ui->ptPerRowSpinBox->setRange(1, g_sys_configs_block.max_pt_number);
     ui->rowIntSpinBox->setRange(g_sys_configs_block.min_row_interval_ms,
@@ -138,6 +138,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     ui->stopSendBtn->setVisible(ui->randDataRBtn->isChecked()
                                 && ui->infinDataCheckBox->isChecked());
+
+    ui->sentCountLbl->setText(QString("%1/%2").arg(m_sent_succ_counter).arg(m_counter));
 
     m_init_ok = true;
 }
@@ -225,11 +227,18 @@ void MainWindow::send_one_row()
         info_str = QString("ERROR!!! Failed to send data: ") + udpSocket.errorString();
         ui->infoDispEdit->append(info_str);
     }
+    else
+    {
+        m_sent_succ_counter++;
+        ui->sentCountLbl->setText(QString("%1/%2").arg(m_sent_succ_counter).arg(m_counter));
+    }
 }
 
 void MainWindow::on_sendBtn_clicked()
 {
     stop_data_send(false);
+
+    ui->sentCountLbl->setText(QString("%1/%2").arg(m_sent_succ_counter).arg(m_counter));
 
     if (!validateInputs())
     {
@@ -283,7 +292,7 @@ void MainWindow::send_int_timer_hdlr()
 void MainWindow::stop_data_send(bool reset_st)
 {
     m_send_timer.stop();
-    m_counter = 0;
+    m_counter = 0; m_sent_succ_counter = 0;
     m_row_idx = g_sys_configs_block.start_row_idx;
 
     if(reset_st) collectingState = ST_IDLE;
