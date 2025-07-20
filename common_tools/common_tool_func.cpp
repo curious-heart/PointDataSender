@@ -1,6 +1,4 @@
-﻿#include <windows.h>
-
-#include "common_tool_func.h"
+﻿#include "common_tool_func.h"
 #include "logger/logger.h"
 
 #include <QDateTime>
@@ -13,11 +11,16 @@
 #include <QFont>
 #include <QtMath>
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
+
 static bool exec_external_process(QString cmd, QString cmd_args, bool as_admin = false)
 {
     DIY_LOG(LOG_INFO, QString("exec_external_process: %1 %2, as_admin: %3")
                       .arg(cmd, cmd_args).arg((int)as_admin));
     bool ret = false;
+#ifdef Q_OS_WIN
     if(!cmd.isEmpty())
     {
         SHELLEXECUTEINFO shellInfo;
@@ -58,6 +61,9 @@ static bool exec_external_process(QString cmd, QString cmd_args, bool as_admin =
     {
         DIY_LOG(LOG_WARN, QString("ShellExecuteEx, cmd is empty!"));
     }
+#elif defined(Q_OS_UNIX)
+#else
+#endif
     return ret;
 }
 
