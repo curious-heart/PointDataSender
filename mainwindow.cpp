@@ -487,6 +487,7 @@ void MainWindow::data_ready_hdlr()
 {
     QString log_str;
 
+
     while (udpSocket.hasPendingDatagrams())
     {
         QNetworkDatagram datagram = udpSocket.receiveDatagram();
@@ -494,21 +495,27 @@ void MainWindow::data_ready_hdlr()
         recv_data_with_notes_s_t data_with_notes = {NORMAL, datagram.data()};
         QByteArray &data = data_with_notes.data;
 
+        m_rmt_addr = datagram.senderAddress();
+        m_rmt_port = datagram.senderPort();
+        ui->rmtIPLEdit->setText(m_rmt_addr.toString());
+        ui->rmtPortLEdit->setText(QString::number(m_rmt_port));
+        ui->localPortLEdit->setText(QString::number(udpSocket.localPort()));
+
+        if (data == m_start_req)
+        {
+            udpSocket.writeDatagram(m_start_ack, m_rmt_addr, m_rmt_port);
+        }
+        else if(data == m_stop_req)
+        {
+            udpSocket.writeDatagram(m_stop_ack, m_rmt_addr, m_rmt_port);
+        }
+
         switch(collectingState)
         {
         case ST_IDLE:
             if (data == m_start_req)
             {
-                m_rmt_addr = datagram.senderAddress();
-                m_rmt_port = datagram.senderPort();
-
-                ui->rmtIPLEdit->setText(m_rmt_addr.toString());
-                ui->rmtPortLEdit->setText(QString::number(m_rmt_port));
-                ui->localPortLEdit->setText(QString::number(udpSocket.localPort()));
-
-                udpSocket.writeDatagram(m_start_ack, m_rmt_addr, m_rmt_port);
                 collectingState = ST_COLLECTING;
-
                 log_str = "receive start cmd. acked. enter ST_COLLECTING";
             }
             else
@@ -522,12 +529,8 @@ void MainWindow::data_ready_hdlr()
         default:
             if (data == m_stop_req)
             {
-
-                udpSocket.writeDatagram(m_stop_ack, m_rmt_addr, m_rmt_port);
                 collectingState = ST_IDLE;
-
                 stop_data_send();
-
                 log_str = "receive stop cmd. acked. enter ST_IDLE\n";
             }
             else
